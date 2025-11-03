@@ -1,0 +1,11 @@
+{
+  "total_chunks": 173,
+  "chunks_omitidos": 0,
+  "embedding_dimension": 768,
+  "model_name": "intfloat/multilingual-e5-base",
+  "normalized": true,
+  "usa_prefijos": true,
+  "index_path": "/Users/alejandrocarmona/Documents/proyectofinal/data/index/faiss.index",
+  "metadata_path": "/Users/alejandrocarmona/Documents/proyectofinal/data/index/meta.jsonl",
+  "embeddings_path": "/Users/alejandrocarmona/Documents/proyectofinal/data/index/embeddings.npy"
+}

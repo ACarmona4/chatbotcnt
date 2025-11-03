@@ -1,0 +1,28 @@
+
+# Preprocesamiento de PDF
+pdfplumber==0.10.3
+PyPDF2==3.0.1
+
+# Procesamiento de texto
+regex==2023.10.3
+
+# Embeddings y NLP
+sentence-transformers>=2.7.0
+faiss-cpu>=1.7.4
+
+# LLMs y recuperación
+rank-bm25>=0.2.2
+ollama>=0.1.0
+
+# Variables de entorno
+python-dotenv>=1.0.0
+
+
+# API y despliegue en WhatsApp
+fastapi>=0.120.0
+uvicorn[standard]>=0.38.0
+requests>=2.32.0
+ngrok>=1.0.0
+
+# Utilidades
+pathlib2==2.3.7.post1
