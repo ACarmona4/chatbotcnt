@@ -20,13 +20,15 @@ def load_chunks(path: str) -> List[Dict]:
 
 
 class EmbeddingGenerator:
-    
-    def __init__(self, model_name: str = "intfloat/multilingual-e5-base", batch_size: int = 64, use_query_prefix: bool = True):
 
+    def __init__(self, model_name: str = "sentence-transformers/all-mpnet-base-v2", batch_size: int = 64, use_query_prefix: bool = True):
+
+        # Elegimos device automáticamente (cuda si está disponible)
         self.model = SentenceTransformer(model_name, device="cuda" if HAS_CUDA else "cpu")
         self.batch_size = batch_size
         self.model_name = model_name
         self.use_query_prefix = use_query_prefix
+        # flag para compatibilidad con prefijos tipo 'e5'
         self.is_e5_model = "e5" in model_name.lower()
 
     # Método para agregar prefijo 'passage:' a los textos

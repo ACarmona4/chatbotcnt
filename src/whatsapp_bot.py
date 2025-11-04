@@ -38,11 +38,14 @@ try:
     retriever = CNTRetriever(
         index_path=str(base_dir / "data" / "index" / "faiss.index"),
         meta_path=str(base_dir / "data" / "index" / "meta.jsonl"),
-        model_name="intfloat/multilingual-e5-base",
+        # Usar un modelo de embeddings más potente (MPNet) para mejorar recall/precisión
+        model_name="sentence-transformers/all-mpnet-base-v2",
         top_k=6,
         overfetch=32,
         min_score=0.35,
-        use_bm25=True
+        use_bm25=True,
+        # Opcional: re-ranker cross-encoder para mejorar ordenamiento (puede descargarse al iniciar)
+        rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2"
     )
     print("✅ CNTRetriever inicializado")
     

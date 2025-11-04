@@ -18,6 +18,15 @@ from pathlib import Path
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
+try:
+    # CrossEncoder puede usarse como re-ranker para ordenar mejor los candidatos
+    from sentence_transformers import CrossEncoder
+except Exception:
+    try:
+        # fallback a otra ruta de import
+        from sentence_transformers.cross_encoder import CrossEncoder
+    except Exception:
+        CrossEncoder = None
 
 try:
     from rank_bm25 import BM25Okapi
@@ -31,12 +40,13 @@ class CNTRetriever:
         self,
         index_path: str = "data/index/faiss.index",
         meta_path: str  = "data/index/meta.jsonl",
-        model_name: str = "intfloat/multilingual-e5-base",
+        model_name: str = "sentence-transformers/all-mpnet-base-v2",
         top_k: int      = 6,
         overfetch: int  = 32,
         min_score: float = 0.35,
         use_bm25: bool   = False,
-        text_fields_priority: Optional[List[str]] = None
+        text_fields_priority: Optional[List[str]] = None,
+        rerank_model: Optional[str] = None
     ):
         # modelo (GPU si existe; transparente)
         self.model = SentenceTransformer(model_name)
@@ -75,6 +85,14 @@ class CNTRetriever:
         if self.use_bm25:
             tokens_corpus = [self._tokenize(self._get_text(m)) for m in self.meta]
             self._bm25 = BM25Okapi(tokens_corpus)
+
+        # Re-ranker opcional (cross-encoder). Si se pasa rerank_model lo cargamos.
+        self.reranker = None
+        if rerank_model and CrossEncoder is not None:
+            try:
+                self.reranker = CrossEncoder(rerank_model)
+            except Exception:
+                self.reranker = None
 
     # ------------- utils -------------
     def _prefix_query(self, q: str) -> str:
@@ -138,6 +156,23 @@ class CNTRetriever:
                 continue
             candidates.append(self._pack(m, score=float(s), source="semantic"))
             seen_articles.add(art)
+
+        # Si existe reranker, re-evaluar scores de los candidatos y reordenar
+        if self.reranker and len(candidates) > 0:
+            # Limitarnos a los candidatos actuales
+            texts = [self._get_text(c) for c in candidates]
+            pairs = [(query, t) for t in texts]
+            try:
+                rerank_scores = self.reranker.predict(pairs)
+                # Reemplazar score por la puntuación del reranker (normalizamos a 0-1 con sigmoid si es necesario)
+                for c, s in zip(candidates, rerank_scores):
+                    try:
+                        c["score"] = float(s)
+                    except Exception:
+                        pass
+            except Exception:
+                # Si reranker falla, continuar con scores originales
+                pass
 
         # C) BM25 opcional: reordenar candidatos por léxico (mejora definiciones)
         if self.use_bm25 and self._bm25 and len(candidates) > 1:

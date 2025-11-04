@@ -1,10 +1,14 @@
 """
-Generador de respuestas con Ollama.
+Generador de respuestas. Soporta Ollama (local) o Azure OpenAI Foundry (chat/completions).
+Se selecciona Azure si están definidas las variables de entorno
+`AZURE_OPENAI_ENDPOINT` (URL completa al endpoint de chat/completions) y
+`AZURE_OPENAI_KEY` (clave/API key). Si no están, se usa Ollama como antes.
 """
 from typing import List, Dict, Optional
-import ollama
 import sys
 from pathlib import Path
+import os
+import requests
 
 # Agregar utils al path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -12,7 +16,7 @@ from utils.context_compressor import compress_context
 
 
 class CNTGenerator:
-    
+
     def __init__(self, model: str = "qwen2.5:7b", temperature: float = 0.1, max_context_chars: int = 8000, debug: bool = False, text_field: str = "texto"):
 
         self.model = model
@@ -20,11 +24,29 @@ class CNTGenerator:
         self.max_context_chars = max_context_chars
         self.debug = debug
         self.text_field = text_field  # Ahora usa 'texto' del retriever simplificado
-        
-        try:
-            ollama.list()
-        except Exception as e:
-            raise RuntimeError("Ollama no está corriendo. Ejecuta: brew services start ollama") from e
+
+        # Detectar configuración de Azure OpenAI (Foundry)
+        self.azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        self.azure_key = os.getenv("AZURE_OPENAI_KEY")
+        # Si ambas están configuradas, usaremos Azure. En caso contrario, intentamos usar Ollama
+        self.use_azure = bool(self.azure_endpoint and self.azure_key)
+
+        if self.use_azure:
+            if self.debug:
+                print(f"Usando Azure OpenAI endpoint: {self.azure_endpoint}")
+        else:
+            # intentamos importar ollama solo si no hay Azure configurado
+            try:
+                import ollama
+                self.ollama = ollama
+                # comprobar que Ollama esté corriendo
+                try:
+                    self.ollama.list()
+                except Exception as e:
+                    raise RuntimeError("Ollama no está corriendo. Ejecuta: brew services start ollama o configura AZURE_OPENAI_*") from e
+            except Exception:
+                # Si falla la importación, informar al usuario
+                raise RuntimeError("No hay endpoint de Azure configurado y no se pudo inicializar Ollama. Configura AZURE_OPENAI_ENDPOINT/AZURE_OPENAI_KEY o instala/ejecuta Ollama.")
     
     def _resolve_text(self, article: Dict) -> str:
         """
@@ -127,26 +149,84 @@ CRÍTICO: Lee TODO el artículo antes de responder. No omitas excepciones ni con
             {"role": "user", "content": f"ARTÍCULOS DEL CNT:\n{context}\n\n---\n\nPREGUNTA: {query}\n\nINSTRUCCIÓNES: Lee COMPLETO cada artículo. Identifica excepciones y condiciones especiales. Responde en 2-3 oraciones incluyendo TODA la información relevante.\n\nRESPUESTA:"}
         ]
         
-        response = ollama.chat(
-            model=self.model,
-            messages=messages,
-            options={
-                'temperature': self.temperature,
-                'num_predict': 250,  # Suficiente para respuestas completas con excepciones
-                'num_ctx': 4096,
-                'num_thread': 8
+        # Si está configurado Azure, hacemos la petición HTTP al endpoint proporcionado
+        if self.use_azure:
+            headers = {
+                # Azure suele aceptar api-key; algunos endpoints preview pueden aceptar Authorization Bearer.
+                # Añadimos ambos para aumentar compatibilidad.
+                "Authorization": f"Bearer {self.azure_key}",
+                "api-key": self.azure_key,
+                "Content-Type": "application/json"
             }
-        )
-        
-        answer = response['message']['content']
-        
-        return {
-            "answer": answer,
-            "model": self.model,
-            "articles_used": [a.get('articulo') for a in articles],
-            "usage": {
-                "prompt_tokens": response.get('prompt_eval_count', 0),
-                "completion_tokens": response.get('eval_count', 0),
-                "total_tokens": response.get('prompt_eval_count', 0) + response.get('eval_count', 0)
+
+            # Construir payload compatible con chat/completions
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": self.temperature,
+                # Ajuste sensato de tokens; puede adaptarse según necesidades
+                "max_tokens": 1024
             }
-        }
+
+            try:
+                r = requests.post(self.azure_endpoint, headers=headers, json=payload, timeout=60)
+                r.raise_for_status()
+                response = r.json()
+            except Exception as e:
+                raise RuntimeError(f"Error llamando a Azure OpenAI endpoint: {e}") from e
+
+            # Parsear la respuesta atendiendo a variantes de formato
+            answer = ""
+            try:
+                # Forma común: choices[0].message.content
+                if "choices" in response and len(response["choices"]) > 0:
+                    first = response["choices"][0]
+                    if isinstance(first.get("message"), dict) and "content" in first.get("message"):
+                        answer = first["message"]["content"]
+                    elif "message" in first and isinstance(first.get("message"), str):
+                        answer = first.get("message")
+                    elif "content" in first:
+                        answer = first.get("content")
+                    else:
+                        # intentar otras claves
+                        answer = str(first)
+                else:
+                    # fallback genérico
+                    answer = response.get("text", "") or response.get("response", "") or ""
+            except Exception:
+                answer = ""
+
+            usage = response.get("usage", {}) if isinstance(response, dict) else {}
+
+            return {
+                "answer": answer,
+                "model": self.model,
+                "articles_used": [a.get('articulo') for a in articles],
+                "usage": usage
+            }
+
+        # Fallback: Ollama local (mismo comportamiento anterior)
+        else:
+            response = self.ollama.chat(
+                model=self.model,
+                messages=messages,
+                options={
+                    'temperature': self.temperature,
+                    'num_predict': 250,  # Suficiente para respuestas completas con excepciones
+                    'num_ctx': 4096,
+                    'num_thread': 8
+                }
+            )
+
+            answer = response['message']['content']
+
+            return {
+                "answer": answer,
+                "model": self.model,
+                "articles_used": [a.get('articulo') for a in articles],
+                "usage": {
+                    "prompt_tokens": response.get('prompt_eval_count', 0),
+                    "completion_tokens": response.get('eval_count', 0),
+                    "total_tokens": response.get('prompt_eval_count', 0) + response.get('eval_count', 0)
+                }
+            }
