@@ -17,7 +17,6 @@ ollama>=0.1.0
 # Variables de entorno
 python-dotenv>=1.0.0
 
-
 # API y despliegue en WhatsApp
 fastapi>=0.120.0
 uvicorn[standard]>=0.38.0
