@@ -34,29 +34,23 @@ if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
 try:
     base_dir = Path(__file__).parent.parent
     
-    print("🔧 Inicializando CNTRetriever...")
     retriever = CNTRetriever(
         index_path=str(base_dir / "data" / "index" / "faiss.index"),
         meta_path=str(base_dir / "data" / "index" / "meta.jsonl"),
-        # Usar un modelo de embeddings más potente (MPNet) para mejorar recall/precisión
         model_name="sentence-transformers/all-mpnet-base-v2",
         top_k=6,
         overfetch=32,
         min_score=0.35,
         use_bm25=True,
-        # Opcional: re-ranker cross-encoder para mejorar ordenamiento (puede descargarse al iniciar)
         rerank_model="cross-encoder/ms-marco-MiniLM-L-6-v2"
     )
-    print("✅ CNTRetriever inicializado")
     
-    print("🔧 Inicializando CNTGenerator...")
     generator = CNTGenerator(
         model="qwen2.5:7b",
         temperature=0.1,
         max_context_chars=8000,
         debug=False
     )
-    print("CNTGenerator inicializado")
     
 except Exception as e:
     print(f"Error inicializando RAG: {e}")
@@ -64,11 +58,10 @@ except Exception as e:
 
 app = FastAPI(title="CNT WhatsApp Bot", version="2.0.0")
 
-# Cache para evitar procesar mensajes duplicados
 processed_messages = set()
 MAX_CACHE_SIZE = 1000
 
-
+# Método para enviar mensajes de texto por WhatsApp
 def send_whatsapp_text(to: str, body: str) -> Dict[str, Any]:
     """Envía un texto por WhatsApp. Divide en chunks si es muy largo."""
     headers = {
@@ -98,9 +91,8 @@ def send_whatsapp_text(to: str, body: str) -> Dict[str, Any]:
     
     return last
 
-
+# Método para procesar una consulta
 def process_query(query: str) -> str:
-    """Procesa una consulta con el sistema RAG integrado."""
     try:
         # 1. Recuperar artículos relevantes
         articles = retriever.search(query, top_k=6)
@@ -121,7 +113,7 @@ def process_query(query: str) -> str:
         print(f"Error procesando query: {e}")
         return f"Ocurrió un error procesando tu consulta. Por favor, intenta de nuevo."
 
-
+# Endpoint para verificación de webhook
 @app.get("/webhook")
 async def verify_webhook(request: Request):
     mode      = request.query_params.get("hub.mode")
@@ -131,7 +123,7 @@ async def verify_webhook(request: Request):
         return PlainTextResponse(challenge, status_code=200)
     raise HTTPException(status_code=403, detail="Invalid verify token")
 
-
+# Endpoint para recibir mensajes entrantes
 @app.post("/webhook")
 async def inbound_message(request: Request):
     try:
@@ -176,6 +168,20 @@ async def inbound_message(request: Request):
             )
             send_whatsapp_text(from_number, help_text)
             return {"status": "ok_help"}
+        
+        # Respuestas de agradecimiento
+        cortesia_keywords = {
+            "ok", "gracias", "muchas gracias", "muchísimas gracias", "mil gracias",
+            "ya entiendo", "entendido", "ah ok", "ahh ok", "oki", "okey", "okay",
+            "listo", "perfecto", "excelente", "genial", "super", "vale",
+            "de una", "entiendo", "claro", "ya", "chévere", "bacano"
+        }
+        
+        user_lower = user_text.lower().strip()
+        if user_lower in cortesia_keywords or any(keyword in user_lower for keyword in {"gracias", "entendido", "entiendo"}):
+            courtesy_text = "¡Fue un placer ayudarte! 😊 ¿Tienes otra duda sobre el Código Nacional de Tránsito?"
+            send_whatsapp_text(from_number, courtesy_text)
+            return {"status": "ok_courtesy"}
 
         # Procesar consulta con RAG
         answer = process_query(user_text)
