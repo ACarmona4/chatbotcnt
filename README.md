@@ -147,6 +147,6 @@ proyectofinal/
 **Sebastián Castaño Arroyave**
 - GitHub: [@scastanoa1](https://github.com/scastanoa1)
 
-**Miguel Alejandro Gómez Duque**
+**Miguel Alejandro Gómez**
 - GitHub: [@Magdc](https://github.com/Magdc)
 
