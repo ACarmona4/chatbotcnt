@@ -14,7 +14,7 @@ El sistema combina búsqueda semántica avanzada, re-ranking de resultados y gen
 - **Uvicorn**: Servidor ASGI de alto rendimiento
 
 ### Procesamiento de Lenguaje Natural
-- **Ollama**: Runtime local para modelos de lenguaje
+- **gpt 4o mini**: API de Azure AI Foundry
 - **Qwen2.5:7b**: Modelo de lenguaje para generación de respuestas
 - **Sentence Transformers**: Generación de embeddings semánticos
 - **FAISS**: Búsqueda vectorial eficiente
