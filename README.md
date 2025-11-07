@@ -15,7 +15,6 @@ El sistema combina búsqueda semántica avanzada, re-ranking de resultados y gen
 
 ### Procesamiento de Lenguaje Natural
 - **gpt 4o mini**: API de Azure AI Foundry
-- **Qwen2.5:7b**: Modelo de lenguaje para generación de respuestas
 - **Sentence Transformers**: Generación de embeddings semánticos
 - **FAISS**: Búsqueda vectorial eficiente
 - **BM25**: Algoritmo de ranking para búsqueda léxica
